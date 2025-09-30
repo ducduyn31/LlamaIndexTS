@@ -1,5 +1,27 @@
 # @llamaindex/openai
 
+## 0.4.20
+
+### Patch Changes
+
+- Updated dependencies [06f884a]
+  - @llamaindex/core@0.6.22
+
+## 0.4.19
+
+### Patch Changes
+
+- 5da1cda: feat: support zod v4 & v3
+- Updated dependencies [5da1cda]
+  - @llamaindex/core@0.6.21
+
+## 0.4.18
+
+### Patch Changes
+
+- 001a515: chore: add minimal reasoning effort for gpt5
+- 9d7d205: fix: fix the problem that the usage field in the streaming response was not handled correctly
+
 ## 0.4.17
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @llamaindex/anthropic
 
+## 0.3.26
+
+### Patch Changes
+
+- b4c5531: Add initial sonnet 4.5 support
+
+## 0.3.25
+
+### Patch Changes
+
+- Updated dependencies [06f884a]
+  - @llamaindex/core@0.6.22
+
+## 0.3.24
+
+### Patch Changes
+
+- 5d5cd44: fix: anthropic temperature parameter not respecting value 0
+- Updated dependencies [5da1cda]
+  - @llamaindex/core@0.6.21
+
 ## 0.3.23
 
 ### Patch Changes

@@ -1,7 +1,8 @@
 import { openai } from "@ai-sdk/openai";
 import { llamaindex } from "@llamaindex/vercel";
-import { streamText } from "ai";
-import { Document, LlamaCloudIndex } from "llamaindex";
+import { stepCountIs, streamText } from "ai";
+import { LlamaCloudIndex } from "llama-cloud-services";
+import { Document } from "llamaindex";
 import fs from "node:fs/promises";
 
 async function main() {
@@ -28,7 +29,7 @@ async function main() {
           "get information from your knowledge base to answer questions.", // optional description
       }),
     },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   for await (const textPart of result.textStream) {

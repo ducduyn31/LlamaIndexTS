@@ -1,5 +1,20 @@
 # @llamaindex/ollama
 
+## 0.1.23
+
+### Patch Changes
+
+- Updated dependencies [06f884a]
+  - @llamaindex/core@0.6.22
+
+## 0.1.22
+
+### Patch Changes
+
+- 5da1cda: feat: support zod v4 & v3
+- Updated dependencies [5da1cda]
+  - @llamaindex/core@0.6.21
+
 ## 0.1.21
 
 ### Patch Changes
