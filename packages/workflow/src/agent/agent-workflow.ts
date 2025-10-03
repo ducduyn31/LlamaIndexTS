@@ -1,23 +1,26 @@
 import { callTool } from "@llamaindex/core/agent";
-import type { JSONValue } from "@llamaindex/core/global";
+import type { JSONObject, JSONValue } from "@llamaindex/core/global";
 import type { ChatMessage, MessageContent } from "@llamaindex/core/llms";
 import { createMemory, Memory } from "@llamaindex/core/memory";
 import { PromptTemplate } from "@llamaindex/core/prompts";
 import { tool } from "@llamaindex/core/tools";
 import { stringifyJSONToMessageContent } from "@llamaindex/core/utils";
+import { z, type ZodInfer, type ZodSchema } from "@llamaindex/core/zod";
 import { consoleLogger, emptyLogger, type Logger } from "@llamaindex/env";
 import {
   createWorkflow,
-  getContext,
   workflowEvent,
+  WorkflowStream,
   type Handler,
   type Workflow,
   type WorkflowContext,
   type WorkflowEvent,
   type WorkflowEventData,
 } from "@llamaindex/workflow-core";
-import { createStatefulMiddleware } from "@llamaindex/workflow-core/middleware/state";
-import { z } from "zod";
+import {
+  createStatefulMiddleware,
+  type StatefulContext,
+} from "@llamaindex/workflow-core/middleware/state";
 import type { AgentWorkflowState, BaseWorkflowAgent } from "./base";
 import {
   agentInputEvent,
@@ -56,10 +59,11 @@ export const startAgentEvent = workflowEvent<
   debugLabel: "llamaindex-start",
 });
 
-export type AgentResultData = {
+export type AgentResultData<O = JSONObject> = {
   result: MessageContent;
   message: ChatMessage;
   state?: AgentWorkflowState | undefined;
+  object?: O | undefined;
 };
 export const stopAgentEvent = workflowEvent<AgentResultData, "llamaindex-stop">(
   {
@@ -339,9 +343,10 @@ export class AgentWorkflow implements Workflow {
   }
 
   private handleInputStep = async (
+    context: StatefulContext<AgentWorkflowState>,
     event: WorkflowEventData<AgentInputData>,
   ) => {
-    const { state } = this.stateful.getContext();
+    const { state } = context;
     const { userInput, chatHistory } = event.data;
     const memory = state.memory;
     if (chatHistory) {
@@ -375,7 +380,10 @@ export class AgentWorkflow implements Workflow {
     });
   };
 
-  private setupAgent = async (event: WorkflowEventData<AgentInput>) => {
+  private setupAgent = async (
+    context: StatefulContext<AgentWorkflowState>,
+    event: WorkflowEventData<AgentInput>,
+  ) => {
     const currentAgentName = event.data.currentAgentName;
     const agent = this.agents.get(currentAgentName);
     if (!agent) {
@@ -396,16 +404,19 @@ export class AgentWorkflow implements Workflow {
     });
   };
 
-  private runAgentStep = async (event: WorkflowEventData<AgentSetup>) => {
-    const { sendEvent } = this.stateful.getContext();
+  private runAgentStep = async (
+    context: StatefulContext<AgentWorkflowState>,
+    event: WorkflowEventData<AgentSetup>,
+  ) => {
+    const { sendEvent } = context;
     const agent = this.agents.get(event.data.currentAgentName);
     if (!agent) {
       throw new Error("No valid agent found");
     }
 
     const output = await agent.takeStep(
-      this.stateful.getContext(),
-      this.stateful.getContext().state,
+      context,
+      context.state,
       event.data.input,
       agent.tools,
     );
@@ -421,7 +432,10 @@ export class AgentWorkflow implements Workflow {
     sendEvent(agentOutputEvent.with(output));
   };
 
-  private parseAgentOutput = async (event: WorkflowEventData<AgentStep>) => {
+  private parseAgentOutput = async (
+    context: StatefulContext<AgentWorkflowState>,
+    event: WorkflowEventData<AgentStep>,
+  ) => {
     const { agentName, response, toolCalls } = event.data;
     const agent = this.agents.get(agentName);
     if (!agent) {
@@ -442,15 +456,22 @@ export class AgentWorkflow implements Workflow {
         raw: response,
         currentAgentName: agentName,
       };
-      const content = await agent.finalize(
-        this.stateful.getContext().state,
-        agentOutput,
-      );
+      const content = await agent.finalize(context.state, agentOutput);
+
+      // if responseFormat is set, use the structured tool to parse the response
+      let object: JSONObject | undefined = undefined;
+      if (context.state.responseFormat) {
+        object = await agent.getStructuredOutput(
+          context.state.responseFormat,
+          content.response,
+        );
+      }
 
       return stopAgentEvent.with({
         message: content.response,
         result: content.response.content,
-        state: this.stateful.getContext().state,
+        state: context.state,
+        object,
       });
     }
 
@@ -460,8 +481,11 @@ export class AgentWorkflow implements Workflow {
     });
   };
 
-  private executeToolCalls = async (event: WorkflowEventData<ToolCalls>) => {
-    const { sendEvent } = getContext();
+  private executeToolCalls = async (
+    context: StatefulContext<AgentWorkflowState>,
+    event: WorkflowEventData<ToolCalls>,
+  ) => {
+    const { sendEvent } = context;
     const { agentName, toolCalls } = event.data;
     const agent = this.agents.get(agentName);
     if (!agent) {
@@ -507,6 +531,7 @@ export class AgentWorkflow implements Workflow {
   };
 
   private processToolResults = async (
+    context: StatefulContext<AgentWorkflowState>,
     event: WorkflowEventData<ToolResults>,
   ) => {
     const { agentName, results } = event.data;
@@ -517,10 +542,7 @@ export class AgentWorkflow implements Workflow {
       throw new Error(`Agent ${agentName} not found`);
     }
 
-    await agent.handleToolCallResults(
-      this.stateful.getContext().state,
-      results,
-    );
+    await agent.handleToolCallResults(context.state, results);
 
     const directResult = results.find(
       (r: AgentToolCallResult) => r.returnDirect,
@@ -542,22 +564,22 @@ export class AgentWorkflow implements Workflow {
         currentAgentName: agent.name,
       };
 
-      await agent.finalize(this.stateful.getContext().state, agentOutput);
+      await agent.finalize(context.state, agentOutput);
 
       if (isHandoff) {
-        const nextAgentName = this.stateful.getContext().state.nextAgentName;
+        const nextAgentName = context.state.nextAgentName;
 
         this.logger.log(
           `[Agent ${agentName}]: Handoff to ${nextAgentName}: ${directResult.toolOutput.result}`,
         );
 
         if (nextAgentName) {
-          this.stateful.getContext().state.currentAgentName = nextAgentName;
-          this.stateful.getContext().state.nextAgentName = null;
+          context.state.currentAgentName = nextAgentName;
+          context.state.nextAgentName = null;
 
-          const messages = await this.stateful
-            .getContext()
-            .state.memory.getLLM(this.agents.get(nextAgentName)?.llm);
+          const messages = await context.state.memory.getLLM(
+            this.agents.get(nextAgentName)?.llm,
+          );
 
           this.logger.log(`[Agent ${nextAgentName}]: Starting agent`);
 
@@ -571,14 +593,14 @@ export class AgentWorkflow implements Workflow {
       return stopAgentEvent.with({
         message: responseMessage,
         result: output,
-        state: this.stateful.getContext().state,
+        state: context.state,
       });
     }
 
     // Continue with another agent step
-    const messages = await this.stateful
-      .getContext()
-      .state.memory.getLLM(this.agents.get(agent.name)?.llm);
+    const messages = await context.state.memory.getLLM(
+      this.agents.get(agent.name)?.llm,
+    );
     return agentInputEvent.with({
       input: messages,
       currentAgentName: agent.name,
@@ -626,19 +648,23 @@ export class AgentWorkflow implements Workflow {
     };
   }
 
-  runStream(
+  runStream<Z extends ZodSchema>(
     userInput: MessageContent,
     params?: {
       chatHistory?: ChatMessage[];
       state?: AgentWorkflowState;
+      responseFormat?: Z;
     },
-  ) {
+  ): WorkflowStream<WorkflowEventData<AgentResultData<ZodInfer<Z>>>> {
     if (this.agents.size === 0) {
       throw new Error("No agents added to workflow");
     }
     const state = params?.state ?? this.createInitialState();
 
-    const { sendEvent, stream } = this.workflow.createContext(state);
+    const { sendEvent, stream } = this.workflow.createContext({
+      ...state,
+      responseFormat: params?.responseFormat,
+    });
     sendEvent(
       startAgentEvent.with({
         userInput: userInput,
@@ -648,13 +674,14 @@ export class AgentWorkflow implements Workflow {
     return stream.until(stopAgentEvent);
   }
 
-  async run(
+  async run<Z extends ZodSchema>(
     userInput: MessageContent,
     params?: {
       chatHistory?: ChatMessage[];
       state?: AgentWorkflowState;
+      responseFormat?: Z;
     },
-  ): Promise<WorkflowEventData<AgentResultData>> {
+  ): Promise<WorkflowEventData<AgentResultData<ZodInfer<Z>>>> {
     const finalEvent = (await this.runStream(userInput, params).toArray()).at(
       -1,
     );
@@ -680,12 +707,8 @@ export class AgentWorkflow implements Workflow {
         agent_info: JSON.stringify(agentInfo),
       }),
       parameters: z.object({
-        toAgent: z.string({
-          description: "The name of the agent to hand off to",
-        }),
-        reason: z.string({
-          description: "The reason for handing off to the agent",
-        }),
+        toAgent: z.string().describe("The name of the agent to hand off to"),
+        reason: z.string().describe("The reason for handing off to the agent"),
       }),
       execute: (
         {

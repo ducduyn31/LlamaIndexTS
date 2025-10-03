@@ -1,5 +1,34 @@
 # @llamaindex/workflow
 
+## 1.1.24
+
+### Patch Changes
+
+- 06f884a: feat: return structured data when using agent.run()
+- Updated dependencies [06f884a]
+  - @llamaindex/core@0.6.22
+
+## 1.1.23
+
+### Patch Changes
+
+- 5da1cda: feat: support zod v4 & v3
+- Updated dependencies [5da1cda]
+  - @llamaindex/core@0.6.21
+
+## 1.1.22
+
+### Patch Changes
+
+- 1995b38: bump @llamaindex/workflow-core in workflow package
+
+## 1.1.21
+
+### Patch Changes
+
+- Updated dependencies [0267bb0]
+  - @llamaindex/core@0.6.20
+
 ## 1.1.20
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@llamaindex/next-node-runtime-test",
-  "version": "0.1.58",
+  "version": "0.1.62",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,7 @@
     "@llamaindex/huggingface": "workspace:*",
     "@llamaindex/readers": "workspace:*",
     "llamaindex": "workspace:*",
-    "next": "^15.3.3",
+    "next": "^15.4.7",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
