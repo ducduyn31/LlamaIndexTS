@@ -1,5 +1,11 @@
 # @llamaindex/community
 
+## 0.1.0
+
+### Minor Changes
+
+- 98c949f: fix: invoke complete command using the actual modelId
+
 ## 0.0.104
 
 ### Patch Changes
